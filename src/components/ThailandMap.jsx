@@ -1,186 +1,191 @@
-import { useState, useCallback } from 'react';
-import { PROVINCES, REGION_COLORS, REGION_HOVER_COLORS } from '../data/thailandMapData';
+import { useState, useCallback, useRef } from 'react';
+import PROVINCE_MAP, { REGION_FILL, REGION_FILL_HOVER, REGION_NAMES } from '../data/thailandProvinces';
+import thMapData from '../data/th_map';
+import { fetchWeatherByProvince } from '../services/weatherService';
+import { Map } from 'lucide-react';
 
 /**
- * ThailandMap - Interactive SVG map of Thailand with province hover tooltips
- * Uses approximate province positions to render circles on an outline map
+ * ThailandMap - Interactive SVG map using data from th_map.js
+ * Hover over province paths to see weather tooltips
  */
-export default function ThailandMap({ provinceWeather = {} }) {
+export default function ThailandMap({ provinceWeather = {}, onProvinceWeatherLoaded }) {
     const [tooltip, setTooltip] = useState(null);
-    const [hoveredProvince, setHoveredProvince] = useState(null);
+    const [hoveredId, setHoveredId] = useState(null);
+    const [loadingProvince, setLoadingProvince] = useState(null);
+    const failedRef = useRef(new Set());
+    const fetchTimeoutRef = useRef(null);
 
-    // Map coordinate transform: lat/lon to SVG x/y
-    // Thailand bounds: lat 5.5-20.5, lon 97-106
-    const lonMin = 96.5;
-    const lonMax = 106.5;
-    const latMin = 5.0;
-    const latMax = 21.0;
-    const svgWidth = 400;
-    const svgHeight = 620;
+    // Extract map data
+    const { initial_view, paths } = thMapData;
+    const viewBox = `${initial_view.x} ${initial_view.y} ${initial_view.x2} ${initial_view.y2}`;
 
-    const toSvgX = (lon) => ((lon - lonMin) / (lonMax - lonMin)) * svgWidth;
-    const toSvgY = (lat) => svgHeight - ((lat - latMin) / (latMax - latMin)) * svgHeight;
+    // Lazy-fetch weather data when hovering a province
+    const fetchOnHover = useCallback(async (nameEn) => {
+        // Skip if already loaded or already failed
+        if (provinceWeather[nameEn] || failedRef.current.has(nameEn)) return;
 
-    // Thailand outline path (simplified)
-    const thailandOutline = `
-    M ${toSvgX(100.1)},${toSvgY(20.4)}
-    C ${toSvgX(100.5)},${toSvgY(20.5)} ${toSvgX(101.0)},${toSvgY(20.0)} ${toSvgX(100.8)},${toSvgY(19.5)}
-    C ${toSvgX(100.5)},${toSvgY(19.0)} ${toSvgX(100.1)},${toSvgY(19.5)} ${toSvgX(99.9)},${toSvgY(19.8)}
-    C ${toSvgX(99.5)},${toSvgY(20.2)} ${toSvgX(99.0)},${toSvgY(20.4)} ${toSvgX(98.5)},${toSvgY(19.8)}
-    C ${toSvgX(98.0)},${toSvgY(19.3)} ${toSvgX(97.5)},${toSvgY(19.5)} ${toSvgX(97.5)},${toSvgY(18.5)}
-    C ${toSvgX(97.8)},${toSvgY(17.5)} ${toSvgX(98.5)},${toSvgY(17.0)} ${toSvgX(98.5)},${toSvgY(16.0)}
-    C ${toSvgX(98.5)},${toSvgY(15.5)} ${toSvgX(98.8)},${toSvgY(15.0)} ${toSvgX(99.0)},${toSvgY(14.5)}
-    C ${toSvgX(99.0)},${toSvgY(14.0)} ${toSvgX(98.8)},${toSvgY(13.5)} ${toSvgX(99.0)},${toSvgY(13.0)}
-    C ${toSvgX(99.2)},${toSvgY(12.5)} ${toSvgX(99.5)},${toSvgY(12.0)} ${toSvgX(99.5)},${toSvgY(11.5)}
-    C ${toSvgX(99.5)},${toSvgY(11.0)} ${toSvgX(99.2)},${toSvgY(10.5)} ${toSvgX(99.0)},${toSvgY(10.0)}
-    C ${toSvgX(98.7)},${toSvgY(9.5)} ${toSvgX(98.3)},${toSvgY(9.8)} ${toSvgX(98.3)},${toSvgY(9.0)}
-    C ${toSvgX(98.3)},${toSvgY(8.5)} ${toSvgX(98.2)},${toSvgY(8.0)} ${toSvgX(98.3)},${toSvgY(7.8)}
-    C ${toSvgX(98.5)},${toSvgY(7.5)} ${toSvgX(98.7)},${toSvgY(7.8)} ${toSvgX(98.8)},${toSvgY(8.0)}
-    C ${toSvgX(99.0)},${toSvgY(7.5)} ${toSvgX(99.5)},${toSvgY(7.0)} ${toSvgX(99.5)},${toSvgY(6.8)}
-    C ${toSvgX(99.8)},${toSvgY(6.5)} ${toSvgX(100.2)},${toSvgY(6.2)} ${toSvgX(100.5)},${toSvgY(6.3)}
-    C ${toSvgX(101.0)},${toSvgY(6.5)} ${toSvgX(101.5)},${toSvgY(6.2)} ${toSvgX(101.8)},${toSvgY(6.3)}
-    C ${toSvgX(102.1)},${toSvgY(6.5)} ${toSvgX(101.8)},${toSvgY(7.0)} ${toSvgX(101.0)},${toSvgY(7.3)}
-    C ${toSvgX(100.8)},${toSvgY(7.5)} ${toSvgX(100.5)},${toSvgY(7.8)} ${toSvgX(100.5)},${toSvgY(8.2)}
-    C ${toSvgX(100.2)},${toSvgY(8.5)} ${toSvgX(100.0)},${toSvgY(9.0)} ${toSvgX(99.8)},${toSvgY(9.5)}
-    C ${toSvgX(99.5)},${toSvgY(10.0)} ${toSvgX(99.5)},${toSvgY(10.5)} ${toSvgX(100.0)},${toSvgY(11.0)}
-    C ${toSvgX(100.5)},${toSvgY(11.5)} ${toSvgX(100.8)},${toSvgY(12.0)} ${toSvgX(101.0)},${toSvgY(12.5)}
-    C ${toSvgX(101.5)},${toSvgY(12.0)} ${toSvgX(102.0)},${toSvgY(11.8)} ${toSvgX(102.5)},${toSvgY(12.0)}
-    C ${toSvgX(103.0)},${toSvgY(12.3)} ${toSvgX(102.5)},${toSvgY(13.0)} ${toSvgX(102.3)},${toSvgY(13.5)}
-    C ${toSvgX(102.8)},${toSvgY(14.0)} ${toSvgX(103.2)},${toSvgY(14.5)} ${toSvgX(103.5)},${toSvgY(14.3)}
-    C ${toSvgX(104.0)},${toSvgY(14.5)} ${toSvgX(104.8)},${toSvgY(14.8)} ${toSvgX(105.0)},${toSvgY(15.0)}
-    C ${toSvgX(105.3)},${toSvgY(15.5)} ${toSvgX(105.5)},${toSvgY(16.0)} ${toSvgX(105.0)},${toSvgY(16.5)}
-    C ${toSvgX(104.8)},${toSvgY(17.0)} ${toSvgX(104.5)},${toSvgY(17.5)} ${toSvgX(104.8)},${toSvgY(17.8)}
-    C ${toSvgX(104.5)},${toSvgY(18.0)} ${toSvgX(104.0)},${toSvgY(17.8)} ${toSvgX(103.5)},${toSvgY(18.3)}
-    C ${toSvgX(103.0)},${toSvgY(18.5)} ${toSvgX(102.5)},${toSvgY(18.0)} ${toSvgX(102.0)},${toSvgY(17.8)}
-    C ${toSvgX(101.5)},${toSvgY(18.0)} ${toSvgX(101.0)},${toSvgY(18.5)} ${toSvgX(101.0)},${toSvgY(19.0)}
-    C ${toSvgX(100.5)},${toSvgY(19.5)} ${toSvgX(100.8)},${toSvgY(20.0)} ${toSvgX(100.3)},${toSvgY(20.2)}
-    Z
-  `;
-
-    const handleMouseEnter = useCallback((e, province) => {
-        setHoveredProvince(province.nameEn);
-        const weather = provinceWeather[province.nameEn];
-        setTooltip({
-            x: e.clientX + 12,
-            y: e.clientY - 10,
-            province,
-            weather,
-        });
-    }, [provinceWeather]);
+        setLoadingProvince(nameEn);
+        try {
+            const data = await fetchWeatherByProvince(nameEn);
+            onProvinceWeatherLoaded?.(nameEn, data);
+        } catch {
+            failedRef.current.add(nameEn);
+        } finally {
+            setLoadingProvince(null);
+        }
+    }, [provinceWeather, onProvinceWeatherLoaded]);
 
     const handleMouseMove = useCallback((e) => {
-        setTooltip((prev) =>
-            prev ? { ...prev, x: e.clientX + 12, y: e.clientY - 10 } : null
-        );
-    }, []);
+        // We can get the ID directly from the target if it's a path
+        const target = e.target;
+        const id = target.id;
+
+        // Check if we are over a known province path
+        if (target.tagName === 'path' && id && PROVINCE_MAP[id]) {
+            const province = PROVINCE_MAP[id];
+
+            if (hoveredId !== id) {
+                setHoveredId(id);
+                // Clear any pending fetch
+                if (fetchTimeoutRef.current) {
+                    clearTimeout(fetchTimeoutRef.current);
+                }
+                // Delay fetch by 700ms to avoid fetching while scrolling quickly
+                fetchTimeoutRef.current = setTimeout(() => {
+                    fetchOnHover(province.nameEn);
+                }, 700);
+            }
+
+            setTooltip({
+                x: e.clientX + 16,
+                y: e.clientY - 12,
+                province,
+                provinceId: id,
+                weather: provinceWeather[province.nameEn],
+            });
+        } else {
+            if (hoveredId) {
+                if (fetchTimeoutRef.current) {
+                    clearTimeout(fetchTimeoutRef.current);
+                }
+                setHoveredId(null);
+                setTooltip(null);
+            }
+        }
+    }, [hoveredId, provinceWeather, fetchOnHover]);
 
     const handleMouseLeave = useCallback(() => {
-        setHoveredProvince(null);
+        if (fetchTimeoutRef.current) {
+            clearTimeout(fetchTimeoutRef.current);
+        }
+        setHoveredId(null);
         setTooltip(null);
     }, []);
 
-    // Province dot radius
-    const getRadius = (province) => {
-        if (province.nameEn === 'Bangkok') return 6;
-        return 4.5;
-    };
+    // Get current tooltip weather from the cache
+    const currentTooltipWeather = tooltip && provinceWeather[tooltip.province.nameEn]
+        ? provinceWeather[tooltip.province.nameEn]
+        : null;
 
     return (
-        <div className="card map-section">
-            <div className="card-title">🗺️ แผนที่ประเทศไทย</div>
-            <div className="map-container">
+        <div className="bg-surface border border-border-default rounded-[var(--radius-lg)] p-6 shadow-sm transition-shadow duration-200 hover:shadow-md relative overflow-hidden">
+            <div className="text-[13px] font-medium text-text-secondary uppercase tracking-wider mb-4">
+                <Map size={20} className="inline-block mr-2 align-middle" />
+                แผนที่ประเทศไทย
+            </div>
+
+            {/* Region Legend */}
+            <div className="flex flex-wrap gap-x-5 gap-y-3 mb-4 px-1">
+                {Object.entries(REGION_NAMES).map(([key, label]) => (
+                    <div key={key} className="flex items-center gap-1.5 text-xs text-text-secondary font-medium">
+                        <span
+                            className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
+                            style={{ background: REGION_FILL[key] }}
+                        />
+                        {label}
+                    </div>
+                ))}
+            </div>
+
+            <div
+                className="flex justify-center px-5 pt-2 pb-5"
+                style={{ background: 'radial-gradient(circle at center, rgba(255, 255, 255, 0.3) 0%, transparent 70%)' }}
+            >
                 <svg
-                    viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-                    width="100%"
-                    style={{ maxHeight: '520px' }}
+                    viewBox={viewBox}
+                    className="w-full h-auto max-h-[600px]"
+                    fill="#e0e0e0"
+                    stroke="#ffffff"
+                    style={{ pointerEvents: 'fill' }} // Ensure events only trigger on filled paths
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeave}
                 >
-                    {/* Thailand outline */}
-                    <path
-                        d={thailandOutline}
-                        fill="#f8f9fa"
-                        stroke="#dee2e6"
-                        strokeWidth="1.5"
-                    />
+                    {Object.entries(paths).map(([id, d]) => {
+                        const province = PROVINCE_MAP[id];
+                        if (!province) return null; // Should not happen if data is consistent
 
-                    {/* Province dots */}
-                    {PROVINCES.map((province) => {
-                        const x = toSvgX(province.lon);
-                        const y = toSvgY(province.lat);
-                        const isHovered = hoveredProvince === province.nameEn;
-                        const weather = provinceWeather[province.nameEn];
-                        const hasWeather = !!weather;
-
-                        // Color based on region
+                        const isHovered = hoveredId === id;
                         const fillColor = isHovered
-                            ? REGION_HOVER_COLORS[province.region]
-                            : hasWeather
-                                ? REGION_COLORS[province.region]
-                                : '#e9ecef';
-
-                        const strokeColor = isHovered ? '#495057' : hasWeather ? '#adb5bd' : '#ced4da';
+                            ? REGION_FILL_HOVER[province.region] || '#bbb'
+                            : REGION_FILL[province.region] || '#e0e0e0';
 
                         return (
-                            <g key={province.nameEn}>
-                                <circle
-                                    cx={x}
-                                    cy={y}
-                                    r={isHovered ? getRadius(province) + 2 : getRadius(province)}
-                                    fill={fillColor}
-                                    stroke={strokeColor}
-                                    strokeWidth={isHovered ? 1.5 : 0.8}
-                                    style={{ cursor: 'pointer', transition: 'all 0.15s ease' }}
-                                    onMouseEnter={(e) => handleMouseEnter(e, province)}
-                                    onMouseMove={handleMouseMove}
-                                    onMouseLeave={handleMouseLeave}
-                                />
-                                {/* Show temperature label for hovered */}
-                                {isHovered && weather && (
-                                    <text
-                                        x={x}
-                                        y={y - getRadius(province) - 6}
-                                        textAnchor="middle"
-                                        fontSize="10"
-                                        fontWeight="600"
-                                        fill="#495057"
-                                    >
-                                        {Math.round(weather.main.temp)}°C
-                                    </text>
-                                )}
-                            </g>
+                            <path
+                                key={id}
+                                id={id}
+                                d={d}
+                                strokeWidth="1px"
+                                style={{
+                                    fill: fillColor,
+                                    transition: 'fill 0.2s ease, filter 0.2s ease',
+                                    cursor: 'pointer',
+                                    filter: isHovered ? 'drop-shadow(0 2px 8px rgba(0,0,0,0.25))' : 'none',
+                                    outline: 'none'
+                                }}
+                            />
                         );
                     })}
                 </svg>
             </div>
 
-            {/* Tooltip */}
             {tooltip && (
                 <div
-                    className="map-tooltip"
+                    className="fixed pointer-events-none bg-white/95 backdrop-blur-xl border border-white/50 rounded-[var(--radius-md)] py-3.5 px-4.5 shadow-lg z-[1000] min-w-[180px]"
                     style={{
                         left: tooltip.x,
                         top: tooltip.y,
                         opacity: 1,
+                        animation: 'fadeIn 0.15s ease-out',
                     }}
                 >
-                    <div className="map-tooltip-name">{tooltip.province.name}</div>
-                    <div style={{ fontSize: '11px', color: '#868e96', marginBottom: '4px' }}>
-                        {tooltip.province.nameEn}
+                    <div className="text-base font-bold text-text-primary mb-0.5">
+                        {tooltip.province.name}
                     </div>
-                    {tooltip.weather ? (
+                    <div className="text-[11px] text-text-secondary mb-1">
+                        {tooltip.province.nameEn}
+                        <span className="ml-2 opacity-60">
+                            {REGION_NAMES[tooltip.province.region]}
+                        </span>
+                    </div>
+                    {currentTooltipWeather ? (
                         <>
-                            <div className="map-tooltip-temp">
-                                {Math.round(tooltip.weather.main.temp)}°C
+                            <div className="text-[28px] font-bold text-text-primary my-1 tracking-tight">
+                                {Math.round(currentTooltipWeather.main.temp)}°C
                             </div>
-                            <div className="map-tooltip-desc">
-                                {tooltip.weather.weather[0].description}
+                            <div className="text-[13px] text-text-secondary capitalize">
+                                {currentTooltipWeather.weather[0].description}
                             </div>
-                            <div style={{ fontSize: '11px', color: '#868e96', marginTop: '4px' }}>
-                                ความชื้น {tooltip.weather.main.humidity}%
+                            <div className="text-[11px] text-text-secondary mt-1">
+                                ความชื้น {currentTooltipWeather.main.humidity}%
                             </div>
                         </>
+                    ) : loadingProvince === tooltip.province.nameEn ? (
+                        <div className="text-xs text-text-secondary">
+                            กำลังโหลด...
+                        </div>
                     ) : (
-                        <div style={{ fontSize: '12px', color: '#adb5bd' }}>
-                            ไม่มีข้อมูล
+                        <div className="text-xs text-text-muted">
+                            เลื่อนเมาส์มาเพื่อดูข้อมูล
                         </div>
                     )}
                 </div>

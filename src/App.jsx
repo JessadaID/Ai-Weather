@@ -1,3 +1,4 @@
+import { CloudSun, MapPin } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import './App.css';
 import WeatherCard from './components/WeatherCard';
@@ -7,12 +8,10 @@ import ThailandMap from './components/ThailandMap';
 import {
   fetchCurrentWeather,
   fetchForecast,
-  fetchWeatherByProvince,
   formatWeatherForAI,
 } from './services/weatherService';
-import { KEY_PROVINCES } from './data/thailandMapData';
 
-// Default location: Bangkok
+// Fallback location: Bangkok
 const DEFAULT_LAT = 13.7563;
 const DEFAULT_LON = 100.5018;
 
@@ -24,49 +23,50 @@ function App() {
   const [weatherContext, setWeatherContext] = useState('');
   const [provinceWeather, setProvinceWeather] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [locationName, setLocationName] = useState('กำลังหาตำแหน่ง...');
 
-  // Fetch weather data on mount
+  // Get user's current location, then fetch weather
   useEffect(() => {
-    loadWeatherData();
-    loadProvinceWeather();
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          loadWeatherData(pos.coords.latitude, pos.coords.longitude);
+        },
+        () => {
+          // Fallback to Bangkok if geolocation denied/failed
+          loadWeatherData(DEFAULT_LAT, DEFAULT_LON);
+        },
+        { timeout: 8000 }
+      );
+    } else {
+      loadWeatherData(DEFAULT_LAT, DEFAULT_LON);
+    }
   }, []);
 
-  const loadWeatherData = async () => {
+  const loadWeatherData = async (lat, lon) => {
     setWeatherLoading(true);
     setWeatherError(null);
     try {
       const [current, forecastData] = await Promise.all([
-        fetchCurrentWeather(DEFAULT_LAT, DEFAULT_LON),
-        fetchForecast(DEFAULT_LAT, DEFAULT_LON),
+        fetchCurrentWeather(lat, lon),
+        fetchForecast(lat, lon),
       ]);
       setCurrentWeather(current);
       setForecast(forecastData);
       setWeatherContext(formatWeatherForAI(current, forecastData));
+      setLocationName(current.name || 'ไม่ทราบตำแหน่ง');
       setLastUpdated(new Date());
     } catch (err) {
       setWeatherError(err.message);
+      setLocationName('เกิดข้อผิดพลาด');
     } finally {
       setWeatherLoading(false);
     }
   };
 
-  // Load weather for key provinces (for map display)
-  const loadProvinceWeather = async () => {
-    const results = {};
-    // Fetch in batches to avoid rate limiting
-    for (let i = 0; i < KEY_PROVINCES.length; i += 5) {
-      const batch = KEY_PROVINCES.slice(i, i + 5);
-      const promises = batch.map(async (name) => {
-        try {
-          const data = await fetchWeatherByProvince(name);
-          results[name] = data;
-        } catch {
-          // Skip failed provinces silently
-        }
-      });
-      await Promise.all(promises);
-    }
-    setProvinceWeather(results);
+  // Callback for ThailandMap to update provinceWeather cache
+  const handleProvinceWeatherLoaded = (nameEn, data) => {
+    setProvinceWeather((prev) => ({ ...prev, [nameEn]: data }));
   };
 
   const formatUpdateTime = () => {
@@ -78,20 +78,24 @@ function App() {
   };
 
   return (
-    <div className="app">
+    <div className="mx-auto max-w-[1200px] px-5 pt-6 pb-12">
       {/* Header */}
-      <header className="header">
-        <div className="header-left">
-          <span className="header-icon">☁️</span>
+      <header className="flex items-center justify-between mb-8 pb-5 border-b border-border-default max-md:flex-col max-md:items-start max-md:gap-3">
+        <div className="flex items-center gap-3">
+          <CloudSun className="text-[28px]" size={28} />
           <div>
-            <h1>AI Weather Thailand</h1>
-            <div className="header-subtitle">สภาพอากาศ · พยากรณ์ · AI วิเคราะห์</div>
+            <h1 className="text-[22px] font-semibold text-text-primary tracking-tight">
+              AI Weather Thailand
+            </h1>
+            <div className="text-[13px] text-text-secondary font-normal">
+              สภาพอากาศ · พยากรณ์ · AI วิเคราะห์
+            </div>
           </div>
         </div>
-        <div className="header-location">
-          📍 กรุงเทพมหานคร
+        <div className="flex items-center gap-1.5 text-[13px] text-text-secondary bg-surface px-3.5 py-1.5 rounded-[var(--radius-sm)] border border-border-default">
+          <MapPin size={14} /> {locationName}
           {lastUpdated && (
-            <span style={{ color: '#adb5bd', marginLeft: '8px' }}>
+            <span className="text-text-muted ml-2">
               อัปเดต {formatUpdateTime()}
             </span>
           )}
@@ -99,7 +103,7 @@ function App() {
       </header>
 
       {/* Main Content: Weather + AI Chat */}
-      <div className="main-grid">
+      <div className="grid grid-cols-2 gap-6 mb-6 max-md:grid-cols-1">
         <WeatherCard
           weather={currentWeather}
           loading={weatherLoading}
@@ -116,7 +120,10 @@ function App() {
       />
 
       {/* Thailand Map */}
-      <ThailandMap provinceWeather={provinceWeather} />
+      <ThailandMap
+        provinceWeather={provinceWeather}
+        onProvinceWeatherLoaded={handleProvinceWeatherLoaded}
+      />
     </div>
   );
 }
