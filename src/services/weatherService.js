@@ -32,6 +32,20 @@ export async function fetchForecast(lat, lon) {
 }
 
 /**
+ * Fetch raw 3-hour forecast list
+ * @param {number} lat - Latitude
+ * @param {number} lon - Longitude
+ * @returns {Promise<Array>} Raw forecast list
+ */
+export async function fetchRawForecast(lat, lon) {
+    const url = `${BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric&lang=th`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Forecast API error: ${res.status}`);
+    const data = await res.json();
+    return data.list;
+}
+
+/**
  * Fetch weather for a specific province by name
  * @param {string} provinceName - Province name in English
  * @returns {Promise<object>} Weather data
@@ -126,6 +140,8 @@ export async function fetchAirQuality(lat, lon) {
     if (data.status !== 'ok') throw new Error(`Air Quality API error: ${data.data}`);
     return data.data;
 }
+
+
 
 /**
  * Format weather data as text for AI context
