@@ -5,6 +5,7 @@ import WeatherCard from './components/WeatherCard';
 import WeatherForecast from './components/WeatherForecast';
 import AIChatBox from './components/AIChatBox';
 import ThailandMap from './components/ThailandMap';
+import HourlyForecastChart from './components/HourlyForecastChart';
 import {
   fetchCurrentWeather,
   fetchForecast,
@@ -154,6 +155,11 @@ function App() {
         />
         <AIChatBox weatherContext={weatherContext} />
       </div>
+
+      {/* Hourly Forecast Chart */}
+      {currentWeather?.coord && (
+        <HourlyForecastChart lat={currentWeather.coord.lat} lon={currentWeather.coord.lon} />
+      )}
 
       {/* Forecast */}
       <WeatherForecast
