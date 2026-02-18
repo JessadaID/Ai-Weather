@@ -110,20 +110,43 @@ export function getWeatherIconUrl(iconCode) {
     return `https://openweathermap.org/img/wn/${iconCode}@2x.png`;
 }
 
+const API_KEY_AQ = import.meta.env.VITE_AIR_QUALITY_API_KEY;
+
+/**
+ * Fetch air quality (AQI) for given coordinates
+ * @param {number} lat - Latitude
+ * @param {number} lon - Longitude
+ * @returns {Promise<object>} Air quality data
+ */
+export async function fetchAirQuality(lat, lon) {
+    const url = `https://api.waqi.info/feed/geo:${lat};${lon}/?token=${API_KEY_AQ}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Air Quality API error: ${res.status}`);
+    const data = await res.json();
+    if (data.status !== 'ok') throw new Error(`Air Quality API error: ${data.data}`);
+    return data.data;
+}
+
 /**
  * Format weather data as text for AI context
  * @param {object} current - Current weather data
  * @param {Array} forecast - Forecast data
+ * @param {object} aqi - Air quality data (optional)
  * @returns {string} Formatted weather context
  */
-export function formatWeatherForAI(current, forecast) {
+export function formatWeatherForAI(current, forecast, aqi) {
     let text = `สภาพอากาศปัจจุบัน (${current.name}):\n`;
     text += `- อุณหภูมิ: ${Math.round(current.main.temp)}°C (รู้สึกเหมือน ${Math.round(current.main.feels_like)}°C)\n`;
     text += `- สภาพ: ${current.weather[0].description}\n`;
     text += `- ความชื้น: ${current.main.humidity}%\n`;
     text += `- ลม: ${current.wind.speed} m/s\n`;
     text += `- ความกดอากาศ: ${current.main.pressure} hPa\n`;
-    text += `- ทัศนวิสัย: ${current.visibility / 1000} km\n\n`;
+    text += `- ทัศนวิสัย: ${current.visibility / 1000} km\n`;
+
+    if (aqi) {
+        text += `- คุณภาพอากาศ (AQI): ${aqi.aqi} (PM2.5: ${aqi.iaqi.pm25?.v || '-'}) ซึ่งอยู่ในระดับ ${getAQIDescription(aqi.aqi)}\n`;
+    }
+    text += `\n`;
 
     text += `พยากรณ์อากาศ:\n`;
     forecast.forEach((day) => {
@@ -133,4 +156,13 @@ export function formatWeatherForAI(current, forecast) {
     });
 
     return text;
+}
+
+function getAQIDescription(aqi) {
+    if (aqi <= 50) return 'ดี';
+    if (aqi <= 100) return 'ปานกลาง';
+    if (aqi <= 150) return 'มีผลกระทบต่อสุขภาพ';
+    if (aqi <= 200) return 'มีผลกระทบต่อสุขภาพมาก';
+    if (aqi <= 300) return 'อันตราย';
+    return 'อันตรายมาก';
 }

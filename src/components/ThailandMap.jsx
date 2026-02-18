@@ -8,7 +8,7 @@ import { Map } from 'lucide-react';
  * ThailandMap - Interactive SVG map using data from th_map.js
  * Hover over province paths to see weather tooltips
  */
-export default function ThailandMap({ provinceWeather = {}, onProvinceWeatherLoaded }) {
+export default function ThailandMap({ provinceWeather = {}, onProvinceWeatherLoaded, onSelect }) {
     const [tooltip, setTooltip] = useState(null);
     const [hoveredId, setHoveredId] = useState(null);
     const [loadingProvince, setLoadingProvince] = useState(null);
@@ -34,6 +34,30 @@ export default function ThailandMap({ provinceWeather = {}, onProvinceWeatherLoa
             setLoadingProvince(null);
         }
     }, [provinceWeather, onProvinceWeatherLoaded]);
+
+    const handleClick = useCallback(async (e) => {
+        const target = e.target;
+        const id = target.id;
+        if (target.tagName === 'path' && id && PROVINCE_MAP[id]) {
+            const province = PROVINCE_MAP[id];
+            const nameEn = province.nameEn;
+
+            if (provinceWeather[nameEn]) {
+                onSelect?.(provinceWeather[nameEn]);
+            } else {
+                setLoadingProvince(nameEn);
+                try {
+                    const data = await fetchWeatherByProvince(nameEn);
+                    onProvinceWeatherLoaded?.(nameEn, data);
+                    onSelect?.(data);
+                } catch {
+                    // Ignore errors for now or show toast
+                } finally {
+                    setLoadingProvince(null);
+                }
+            }
+        }
+    }, [provinceWeather, onProvinceWeatherLoaded, onSelect]);
 
     const handleMouseMove = useCallback((e) => {
         // We can get the ID directly from the target if it's a path
@@ -119,6 +143,7 @@ export default function ThailandMap({ provinceWeather = {}, onProvinceWeatherLoa
                     style={{ pointerEvents: 'fill' }} // Ensure events only trigger on filled paths
                     onMouseMove={handleMouseMove}
                     onMouseLeave={handleMouseLeave}
+                    onClick={handleClick}
                 >
                     {Object.entries(paths).map(([id, d]) => {
                         const province = PROVINCE_MAP[id];
