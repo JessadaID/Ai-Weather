@@ -1,140 +1,84 @@
-import { useEffect, useState } from 'react';
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler,
-} from 'chart.js';
+import { useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
-import { fetchRawForecast } from '../services/weatherService';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
-ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler
-);
+// ChartJS is registered globally in main.jsx
 
-export default function HourlyForecastChart({ lat, lon }) {
-    const [chartData, setChartData] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+/**
+ * HourlyForecastChart - displays temperature trend for next 8 hours
+ * Accepts rawForecast passed from App (no extra API call)
+ * Uses linear interpolation between 3-hour API data points
+ */
+export default function HourlyForecastChart({ rawForecast }) {
+    const chartData = useMemo(() => {
+        if (!rawForecast || rawForecast.length === 0) return null;
 
-    useEffect(() => {
-        if (!lat || !lon) return;
+        // Round now to the start of the current hour
+        const currentHourDate = new Date();
+        currentHourDate.setMinutes(0, 0, 0);
+        const startOfHour = Math.floor(currentHourDate.getTime() / 1000);
 
-        const loadData = async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const rawList = await fetchRawForecast(lat, lon);
-                // Round now to the start of the current hour
-                const currentTime = Math.floor(Date.now() / 1000);
-                const currentHourDate = new Date(currentTime * 1000);
-                currentHourDate.setMinutes(0, 0, 0);
-                const startOfHour = Math.floor(currentHourDate.getTime() / 1000);
+        // Linear interpolation helper
+        const interpolate = (start, end, progress) => start + (end - start) * progress;
 
-                // Helper for linear interpolation
-                const interpolate = (start, end, progress) => {
-                    return start + (end - start) * progress;
-                };
+        // Sort raw data by time
+        const sortedList = [...rawForecast].sort((a, b) => a.dt - b.dt);
 
-                // Generate hourly points for next 8 hours
-                const hourlyData = [];
-                // Sort raw data by time
-                const sortedList = rawList.sort((a, b) => a.dt - b.dt);
+        // Generate hourly points for next 8 hours
+        const hourlyData = [];
+        for (let i = 0; i <= 8; i++) {
+            const targetTime = startOfHour + i * 3600;
 
-                for (let i = 0; i <= 8; i++) {
-                    const targetTime = startOfHour + i * 3600;
+            // Find surrounding data points for interpolation
+            let prev = sortedList.filter((item) => item.dt <= targetTime).pop();
+            let next = sortedList.find((item) => item.dt > targetTime);
 
-                    // Find surrounding data points
-                    let prev = sortedList.filter((item) => item.dt <= targetTime).pop();
-                    let next = sortedList.find((item) => item.dt > targetTime);
+            // Fallback if out of range
+            if (!prev && next) prev = next;
+            if (!next && prev) next = prev;
 
-                    // fallback if out of range
-                    if (!prev && next) prev = next;
-                    if (!next && prev) next = prev;
-
-                    if (prev && next) {
-                        let temp;
-
-                        if (prev.dt === next.dt) {
-                            temp = prev.main.temp;
-                        } else {
-                            const progress = (targetTime - prev.dt) / (next.dt - prev.dt);
-                            temp = interpolate(prev.main.temp, next.main.temp, progress);
-                        }
-
-                        hourlyData.push({
-                            dt: targetTime,
-                            temp: temp
-                        });
-                    }
+            if (prev && next) {
+                let temp;
+                if (prev.dt === next.dt) {
+                    temp = prev.main.temp;
+                } else {
+                    const progress = (targetTime - prev.dt) / (next.dt - prev.dt);
+                    temp = interpolate(prev.main.temp, next.main.temp, progress);
                 }
-
-                // Prepare chart data
-                const labels = hourlyData.map((item) => {
-                    const date = new Date(item.dt * 1000);
-                    return date.getHours().toString().padStart(2, '0') + '.00';
-                });
-
-                const tempData = hourlyData.map((item) => item.temp.toFixed(1));
-
-                setChartData({
-                    labels,
-                    datasets: [
-                        {
-                            label: 'อุณหภูมิ (°C)',
-                            data: tempData,
-                            fill: true,
-                            borderColor: 'rgb(255, 99, 132)',
-                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                            tension: 0.4,
-                            pointRadius: 4,
-                            yAxisID: 'y',
-                        },
-                    ],
-                });
-            } catch (err) {
-                console.error('Failed to load forecast data:', err);
-                setError('ไม่สามารถโหลดข้อมูลพยากรณ์ได้');
-            } finally {
-                setLoading(false);
+                hourlyData.push({ dt: targetTime, temp });
             }
+        }
+
+        const labels = hourlyData.map((item) => {
+            const date = new Date(item.dt * 1000);
+            return date.getHours().toString().padStart(2, '0') + '.00';
+        });
+
+        return {
+            labels,
+            datasets: [
+                {
+                    label: 'อุณหภูมิ (°C)',
+                    data: hourlyData.map((item) => item.temp.toFixed(1)),
+                    fill: true,
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    tension: 0.4,
+                    pointRadius: 4,
+                    yAxisID: 'y',
+                },
+            ],
         };
+    }, [rawForecast]);
 
-        loadData();
-    }, [lat, lon]);
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center p-8 text-text-secondary">
-                <Loader2 className="animate-spin mr-2" size={20} />
-                กำลังโหลดข้อมูลกราฟ...
-            </div>
-        );
-    }
-
-    if (error) {
+    if (!chartData) {
         return (
             <div className="flex items-center justify-center p-8 text-text-secondary gap-2">
                 <AlertTriangle size={20} />
-                {error}
+                ไม่มีข้อมูลกราฟ
             </div>
         );
     }
-
-    if (!chartData) return null;
 
     const options = {
         responsive: true,
@@ -159,12 +103,8 @@ export default function HourlyForecastChart({ lat, lon }) {
                 callbacks: {
                     label: function (context) {
                         let label = context.dataset.label || '';
-                        if (label) {
-                            label += ': ';
-                        }
-                        if (context.parsed.y !== null) {
-                            label += context.parsed.y + '°C';
-                        }
+                        if (label) label += ': ';
+                        if (context.parsed.y !== null) label += context.parsed.y + '°C';
                         return label;
                     }
                 }
@@ -179,7 +119,6 @@ export default function HourlyForecastChart({ lat, lon }) {
                 ticks: { color: '#64748b' },
                 title: { display: true, text: 'อุณหภูมิ (°C)', color: '#94a3b8' }
             },
-
             x: {
                 grid: { display: false },
                 ticks: { color: '#64748b' }

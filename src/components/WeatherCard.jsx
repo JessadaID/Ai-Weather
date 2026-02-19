@@ -3,12 +3,44 @@ import { AlertTriangle, RefreshCw, ArrowLeft, Wind, Activity } from 'lucide-reac
 import { useState } from 'react';
 
 /**
- * CurrentWeather card - displays current weather info
+ * Shared card wrapper — keeps the same border/shadow/min-height across all states
+ */
+function CardShell({ children }) {
+    return (
+        <div className="bg-surface border border-border-default rounded-[var(--radius-lg)] p-6 shadow-sm transition-shadow duration-200 hover:shadow-md flex flex-col h-full min-h-[350px]">
+            {children}
+        </div>
+    );
+}
+
+/**
+ * Shared card header — title + refresh button (used in every state)
+ */
+function CardHeader({ onRefresh, loading }) {
+    return (
+        <div className="flex justify-between items-center mb-4">
+            <div className="text-[13px] font-medium text-text-secondary uppercase tracking-wider">
+                สภาพอากาศปัจจุบัน
+            </div>
+            <button
+                onClick={onRefresh}
+                disabled={loading}
+                className={`text-text-secondary hover:text-text-primary transition-colors p-1 -mr-1 rounded-full hover:bg-black/5 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title="อัปเดตข้อมูล"
+            >
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
+        </div>
+    );
+}
+
+/**
+ * WeatherCard - displays current weather info and AQI
  */
 export default function WeatherCard({ weather, airQuality, loading, error, onRefresh }) {
     const [showDetailedAQI, setShowDetailedAQI] = useState(false);
 
-    // Helper for AQI color/text
+    // Helper for AQI color/text based on AQI value
     const getAQIStatus = (val) => {
         if (val <= 50) return { text: 'ดี', color: 'text-green-600', bg: 'bg-green-50' };
         if (val <= 100) return { text: 'ปานกลาง', color: 'text-yellow-600', bg: 'bg-yellow-50' };
@@ -19,58 +51,34 @@ export default function WeatherCard({ weather, airQuality, loading, error, onRef
 
     if (loading) {
         return (
-            <div className="bg-surface border border-border-default rounded-[var(--radius-lg)] p-6 shadow-sm transition-shadow duration-200 hover:shadow-md flex flex-col h-full min-h-[350px]">
-                <div className="flex justify-between items-center mb-4">
-                    <div className="text-[13px] font-medium text-text-secondary uppercase tracking-wider">
-                        สภาพอากาศปัจจุบัน
-                    </div>
-                    <button
-                        onClick={onRefresh}
-                        disabled={loading}
-                        className={`text-text-secondary hover:text-text-primary transition-colors p-1 -mr-1 rounded-full hover:bg-black/5 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        title="อัปเดตข้อมูล"
-                    >
-                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                    </button>
-                </div>
+            <CardShell>
+                <CardHeader onRefresh={onRefresh} loading={loading} />
                 <div className="flex items-center justify-center flex-1 text-text-secondary text-sm">
                     กำลังโหลดข้อมูล...
                 </div>
-            </div>
+            </CardShell>
         );
     }
 
     if (error) {
         return (
-            <div className="bg-surface border border-border-default rounded-[var(--radius-lg)] p-6 shadow-sm transition-shadow duration-200 hover:shadow-md flex flex-col h-full min-h-[350px]">
-                <div className="flex justify-between items-center mb-4">
-                    <div className="text-[13px] font-medium text-text-secondary uppercase tracking-wider">
-                        สภาพอากาศปัจจุบัน
-                    </div>
-                    <button
-                        onClick={onRefresh}
-                        disabled={loading}
-                        className={`text-text-secondary hover:text-text-primary transition-colors p-1 -mr-1 rounded-full hover:bg-black/5 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        title="อัปเดตข้อมูล"
-                    >
-                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                    </button>
-                </div>
+            <CardShell>
+                <CardHeader onRefresh={onRefresh} loading={loading} />
                 <div className="flex flex-col items-center justify-center flex-1 px-5 text-text-secondary text-sm text-center gap-2">
                     <AlertTriangle size={24} />
                     <span>{error}</span>
                 </div>
-            </div>
+            </CardShell>
         );
     }
 
-    // Detailed AQI View
+    // Detailed AQI view
     if (showDetailedAQI && airQuality) {
         const iaqi = airQuality.iaqi || {};
         const status = getAQIStatus(airQuality.aqi);
 
         return (
-            <div className="bg-surface border border-border-default rounded-[var(--radius-lg)] p-6 shadow-sm transition-shadow duration-200 hover:shadow-md flex flex-col h-full min-h-[350px] animate-in fade-in zoom-in-95 duration-200">
+            <CardShell>
                 <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center">
                         <button
@@ -121,7 +129,7 @@ export default function WeatherCard({ weather, airQuality, loading, error, onRef
                         ข้อมูลจาก WAQI.info
                     </div>
                 </div>
-            </div>
+            </CardShell>
         );
     }
 
@@ -137,20 +145,8 @@ export default function WeatherCard({ weather, airQuality, loading, error, onRef
     const aqi = airQuality?.aqi || '-';
 
     return (
-        <div className="bg-surface border border-border-default rounded-[var(--radius-lg)] p-6 shadow-sm transition-shadow duration-200 hover:shadow-md flex flex-col h-full min-h-[350px]">
-            <div className="flex justify-between items-center mb-4">
-                <div className="text-[13px] font-medium text-text-secondary uppercase tracking-wider">
-                    สภาพอากาศปัจจุบัน
-                </div>
-                <button
-                    onClick={onRefresh}
-                    disabled={loading}
-                    className={`text-text-secondary hover:text-text-primary transition-colors p-1 -mr-1 rounded-full hover:bg-black/5 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    title="อัปเดตข้อมูล"
-                >
-                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                </button>
-            </div>
+        <CardShell>
+            <CardHeader onRefresh={onRefresh} loading={loading} />
             <div className="flex items-center gap-4 mb-5 flex-1 items-start">
                 <img
                     className="w-[72px] h-[72px]"
@@ -207,6 +203,6 @@ export default function WeatherCard({ weather, airQuality, loading, error, onRef
                     </div>
                 </div>
             </div>
-        </div>
+        </CardShell>
     );
 }
