@@ -8,7 +8,8 @@ import ThailandMap from './components/ThailandMap';
 import HourlyForecastChart from './components/HourlyForecastChart';
 import {
   fetchCurrentWeather,
-  fetchForecast,
+  fetchRawForecast,
+  groupForecastByDay,
   fetchAirQuality,
   formatWeatherForAI,
 } from './services/weatherService';
@@ -20,6 +21,7 @@ const DEFAULT_LON = 100.5018;
 function App() {
   const [currentWeather, setCurrentWeather] = useState(null);
   const [forecast, setForecast] = useState([]);
+  const [rawForecast, setRawForecast] = useState([]);
   const [airQuality, setAirQuality] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [weatherError, setWeatherError] = useState(null);
@@ -56,12 +58,15 @@ function App() {
     setWeatherLoading(true);
     setWeatherError(null);
     try {
-      const [current, forecastData, aqi] = await Promise.all([
+      // Fetch raw forecast once, then derive grouped forecast from it
+      const [current, rawList, aqi] = await Promise.all([
         fetchCurrentWeather(lat, lon),
-        fetchForecast(lat, lon),
+        fetchRawForecast(lat, lon),
         fetchAirQuality(lat, lon).catch(() => null), // If AQ fails, just return null
       ]);
+      const forecastData = groupForecastByDay(rawList);
       setCurrentWeather(current);
+      setRawForecast(rawList);
       setForecast(forecastData);
       setAirQuality(aqi);
       setWeatherContext(formatWeatherForAI(current, forecastData, aqi));
@@ -156,9 +161,9 @@ function App() {
         <AIChatBox weatherContext={weatherContext} />
       </div>
 
-      {/* Hourly Forecast Chart */}
-      {currentWeather?.coord && (
-        <HourlyForecastChart lat={currentWeather.coord.lat} lon={currentWeather.coord.lon} />
+      {/* Hourly Forecast Chart - reuses rawForecast already fetched, no extra API call */}
+      {rawForecast.length > 0 && (
+        <HourlyForecastChart rawForecast={rawForecast} />
       )}
 
       {/* Forecast */}

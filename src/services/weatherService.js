@@ -17,22 +17,8 @@ export async function fetchCurrentWeather(lat, lon) {
 }
 
 /**
- * Fetch 5-day / 3-hour forecast (free tier)
- * Returns data grouped by day for 7-day-like display
- * @param {number} lat - Latitude
- * @param {number} lon - Longitude
- * @returns {Promise<object>} Forecast data
- */
-export async function fetchForecast(lat, lon) {
-    const url = `${BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric&lang=th`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Forecast API error: ${res.status}`);
-    const data = await res.json();
-    return groupForecastByDay(data);
-}
-
-/**
- * Fetch raw 3-hour forecast list
+ * Fetch raw 3-hour forecast list (single source of truth)
+ * Use groupForecastByDay() on the result for daily grouped view
  * @param {number} lat - Latitude
  * @param {number} lon - Longitude
  * @returns {Promise<Array>} Raw forecast list
@@ -58,14 +44,14 @@ export async function fetchWeatherByProvince(provinceName) {
 }
 
 /**
- * Group 3-hour forecast data by day
- * @param {object} data - Raw forecast API response
+ * Group raw forecast list by day
+ * @param {Array} list - Raw forecast list from fetchRawForecast
  * @returns {Array} Daily grouped forecast
  */
-function groupForecastByDay(data) {
+export function groupForecastByDay(list) {
     const days = {};
 
-    data.list.forEach((item) => {
+    list.forEach((item) => {
         const date = item.dt_txt.split(' ')[0];
         if (!days[date]) {
             days[date] = {
