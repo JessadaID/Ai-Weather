@@ -54,6 +54,10 @@ export default function HourlyForecastChart({ rawForecast }) {
             return date.getHours().toString().padStart(2, '0') + '.00';
         });
 
+        const temps = hourlyData.map((item) => item.temp);
+        const minTemp = Math.floor(Math.min(...temps)) - 10;
+        const maxTemp = Math.ceil(Math.max(...temps)) + 10;
+
         return {
             labels,
             datasets: [
@@ -68,6 +72,9 @@ export default function HourlyForecastChart({ rawForecast }) {
                     yAxisID: 'y',
                 },
             ],
+            // Pass min/max through so options can use them
+            _yMin: minTemp,
+            _yMax: maxTemp,
         };
     }, [rawForecast]);
 
@@ -115,6 +122,8 @@ export default function HourlyForecastChart({ rawForecast }) {
                 type: 'linear',
                 display: true,
                 position: 'left',
+                min: chartData._yMin,
+                max: chartData._yMax,
                 grid: { color: '#f1f5f9' },
                 ticks: { color: '#64748b' },
                 title: { display: true, text: 'อุณหภูมิ (°C)', color: '#94a3b8' }
